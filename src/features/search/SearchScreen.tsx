@@ -20,7 +20,7 @@ import { Search, X, Radio, Users, ChevronRight, Hash } from 'lucide-react-native
 
 export const SearchScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { rooms, searchRooms, loadRooms } = useRoomStore();
+  const { rooms, searchRooms, subscribeRooms } = useRoomStore();
 
   const [activeTab, setActiveTab] = useState<'videos' | 'rooms'>('videos');
   const [query, setQuery] = useState('');
@@ -28,7 +28,10 @@ export const SearchScreen = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadRooms();
+    const unsubscribe = subscribeRooms();
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const handleSearch = async (text: string) => {
@@ -88,7 +91,7 @@ export const SearchScreen = () => {
         <Search size={20} color={Theme.colors.textMuted} style={{ marginRight: 10 }} />
         <TextInput
           style={styles.input}
-          placeholder={activeTab === 'videos' ? 'Search songs, artists, videos...' : 'Enter Room ID (e.g. VIBE-1001) or Room Name...'}
+          placeholder={activeTab === 'videos' ? 'Search songs, artists, videos...' : 'Enter Room ID (e.g. VIBE-4829) or Room Name...'}
           placeholderTextColor={Theme.colors.textMuted}
           value={query}
           onChangeText={handleSearch}
@@ -198,7 +201,7 @@ export const SearchScreen = () => {
                   <Search size={48} color={Theme.colors.textMuted} style={{ marginBottom: 12 }} />
                   <Text style={styles.placeholderTitle}>Discover Music & Live Rooms</Text>
                   <Text style={styles.placeholderSubtitle}>
-                    Search videos by song name or search live rooms by unique Room ID (e.g. VIBE-1001).
+                    Search videos by song name or search live rooms by unique Room ID (e.g. VIBE-4829).
                   </Text>
                 </View>
               )}

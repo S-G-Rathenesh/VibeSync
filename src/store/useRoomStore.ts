@@ -1,13 +1,13 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDatabase, ref, onValue, set as firebaseSet, get as firebaseGet } from 'firebase/database';
+import { app } from '../services/firebase';
 import { RoomModel } from '../types';
-
-const ROOMS_STORAGE_KEY = 'vibe_sync_all_rooms';
 
 interface RoomState {
   rooms: RoomModel[];
   isLoading: boolean;
   loadRooms: () => Promise<void>;
+  subscribeRooms: () => () => void;
   createRoom: (
     name: string,
     isPrivate: boolean,
@@ -19,71 +19,97 @@ interface RoomState {
   getRoomById: (roomId: string) => RoomModel | undefined;
 }
 
-const defaultRooms: RoomModel[] = [
-  {
-    id: 'VIBE-1001',
-    name: '🔥 Top Hits 2026 Sync Room',
-    hostUid: 'host_01',
-    members: ['host_01'],
-    currentVideoId: 'kJQP7kiw5Fk',
-    queue: [],
-    isLive: true,
-    currentProgress: 0,
-    isPlaying: true,
-    isPrivate: false,
-  },
-  {
-    id: 'VIBE-2024',
-    name: '🎵 Lofi Beats & Chill Lounge',
-    hostUid: 'host_02',
-    members: ['host_02'],
-    currentVideoId: 'jfKfPfyJRdk',
-    queue: [],
-    isLive: true,
-    currentProgress: 0,
-    isPlaying: true,
-    isPrivate: false,
-  },
-  {
-    id: 'VIBE-7788',
-    name: '🎸 Tamil & South Beats Party',
-    hostUid: 'host_03',
-    members: ['host_03'],
-    currentVideoId: 'fHI8X4OXluQ',
-    queue: [],
-    isLive: true,
-    currentProgress: 0,
-    isPlaying: true,
-    isPrivate: false,
-  },
-];
-
 export const useRoomStore = create<RoomState>((set, get) => ({
-  rooms: defaultRooms,
+  rooms: [],
   isLoading: true,
 
   loadRooms: async () => {
     try {
-      const json = await AsyncStorage.getItem(ROOMS_STORAGE_KEY);
-      if (json) {
-        const storedRooms: RoomModel[] = JSON.parse(json);
-        if (storedRooms && storedRooms.length > 0) {
-          // Merge defaults with stored rooms to ensure search works seamlessly
-          const mergedMap = new Map<string, RoomModel>();
-          defaultRooms.forEach((r) => mergedMap.set(r.id, r));
-          storedRooms.forEach((r) => mergedMap.set(r.id, r));
-          set({ rooms: Array.from(mergedMap.values()), isLoading: false });
-          return;
-        }
+      const db = getDatabase(app);
+      const roomsRef = ref(db, 'rooms');
+      const snapshot = await firebaseGet(roomsRef);
+
+      if (snapshot.exists()) {
+        const roomsMap = snapshot.val() || {};
+        const roomsList: RoomModel[] = [];
+
+        Object.keys(roomsMap).forEach((id) => {
+          const roomNode = roomsMap[id];
+          const info = roomNode.info || {};
+          const membersObj = roomNode.members || {};
+          const playbackObj = roomNode.playback || {};
+          roomsList.push({
+            id,
+            name: info.name || id,
+            hostUid: info.hostUid || '',
+            members: Object.keys(membersObj),
+            currentVideoId: playbackObj.videoId || null,
+            queue: roomNode.queue ? Object.values(roomNode.queue) : [],
+            isLive: true,
+            currentProgress: playbackObj.currentPosition || 0,
+            isPlaying: Boolean(playbackObj.isPlaying),
+            isPrivate: Boolean(info.isPrivate),
+            password: info.password || null,
+          });
+        });
+
+        set({ rooms: roomsList, isLoading: false });
+      } else {
+        set({ rooms: [], isLoading: false });
       }
     } catch (e) {
-      console.error('Failed to load rooms from AsyncStorage:', e);
+      console.error('Failed to fetch rooms from RTDB:', e);
+      set({ rooms: [], isLoading: false });
     }
-    set({ rooms: defaultRooms, isLoading: false });
   },
 
-  createRoom: async (name: string, isPrivate: boolean, password?: string, hostUid?: string) => {
+  subscribeRooms: () => {
+    const db = getDatabase(app);
+    const roomsRef = ref(db, 'rooms');
+
+    const unsubscribe = onValue(roomsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const roomsMap = snapshot.val() || {};
+        const roomsList: RoomModel[] = [];
+
+        Object.keys(roomsMap).forEach((id) => {
+          const roomNode = roomsMap[id];
+          const info = roomNode.info || {};
+          const membersObj = roomNode.members || {};
+          const playbackObj = roomNode.playback || {};
+          roomsList.push({
+            id,
+            name: info.name || id,
+            hostUid: info.hostUid || '',
+            members: Object.keys(membersObj),
+            currentVideoId: playbackObj.videoId || null,
+            queue: roomNode.queue ? Object.values(roomNode.queue) : [],
+            isLive: true,
+            currentProgress: playbackObj.currentPosition || 0,
+            isPlaying: Boolean(playbackObj.isPlaying),
+            isPrivate: Boolean(info.isPrivate),
+            password: info.password || null,
+          });
+        });
+
+        set({ rooms: roomsList, isLoading: false });
+      } else {
+        set({ rooms: [], isLoading: false });
+      }
+    });
+
+    return unsubscribe;
+  },
+
+  createRoom: async (
+    name: string,
+    isPrivate: boolean,
+    password?: string,
+    hostUid?: string,
+    hostName?: string
+  ) => {
     const currentRooms = get().rooms;
+    const uid = hostUid || 'guest_' + Date.now();
 
     // Generate a unique 4-digit numeric code prefix with VIBE-
     let uniqueId = '';
@@ -96,11 +122,53 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       }
     }
 
+    const roomName = name.trim() || 'Vibe Sync Room';
+
+    const db = getDatabase(app);
+    const roomRef = ref(db, `rooms/${uniqueId}`);
+
+    const roomInfo = {
+      id: uniqueId,
+      name: roomName,
+      hostUid: uid,
+      isLive: true,
+      isPrivate,
+      password: isPrivate ? password : null,
+      createdAt: Date.now(),
+    };
+
+    const initialPlayback = {
+      videoId: null,
+      currentPosition: 0,
+      isPlaying: false,
+      playbackSpeed: 1.0,
+      timestamp: Date.now(),
+      updatedBy: uid,
+    };
+
+    const initialMembers = {
+      [uid]: {
+        uid,
+        displayName: hostName || 'Host',
+        joinedAt: Date.now(),
+      },
+    };
+
+    try {
+      await firebaseSet(roomRef, {
+        info: roomInfo,
+        playback: initialPlayback,
+        members: initialMembers,
+      });
+    } catch (err) {
+      console.error('Failed to create room in RTDB:', err);
+    }
+
     const newRoom: RoomModel = {
       id: uniqueId,
-      name: name.trim() || 'Vibe Sync Room',
-      hostUid: hostUid || 'host_' + Date.now(),
-      members: [hostUid || 'host_' + Date.now()],
+      name: roomName,
+      hostUid: uid,
+      members: [uid],
       currentVideoId: null,
       queue: [],
       isLive: true,
@@ -110,15 +178,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       password: isPrivate ? password : null,
     };
 
-    const updatedRooms = [newRoom, ...currentRooms];
-    set({ rooms: updatedRooms });
-
-    try {
-      await AsyncStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updatedRooms));
-    } catch (e) {
-      console.error('Failed to save room to AsyncStorage:', e);
-    }
-
+    set({ rooms: [newRoom, ...get().rooms] });
     return newRoom;
   },
 
@@ -138,3 +198,4 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     return get().rooms.find((r) => r.id.toLowerCase() === cleanId);
   },
 }));
+
