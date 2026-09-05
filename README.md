@@ -63,15 +63,18 @@ Download the latest release of **VibeSync** for Android:
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="Screenshots/01-login.png" width="200" alt="Login Screen"/>
+  <img src="Screenshots/01-splash.png" width="200" alt="Splash Screen"/>
+  <img src="Screenshots/02-login.png" width="200" alt="Login Screen"/>
   <img src="Screenshots/03-home.png" width="200" alt="Home Screen"/>
   <img src="Screenshots/04-search.png" width="200" alt="Search Screen"/>
-  <img src="Screenshots/05-player.png" width="200" alt="YouTube Player"/>
 </p>
 <p align="center">
+  <img src="Screenshots/05-player.png" width="200" alt="YouTube Player"/>
   <img src="Screenshots/06-profile.png" width="200" alt="User Profile"/>
-  <img src="Screenshots/07-avatar-picker.png" width="200" alt="Avatar Selection"/>
+  <img src="Screenshots/07-avatar-selection.png" width="200" alt="Avatar Selection"/>
   <img src="Screenshots/08-settings.png" width="200" alt="App Settings"/>
+</p>
+<p align="center">
   <img src="Screenshots/09-privacy-policy.png" width="200" alt="Privacy Policy"/>
 </p>
 
