@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { getDatabase, ref, set as setRtdb } from 'firebase/database';
+import { app } from '../services/firebase';
 import { YoutubeVideo } from '../types';
 import { pipService } from '../services/pipService';
 
@@ -41,12 +43,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   togglePlay: () => {
-    const { isPlaying } = get();
-    set({ isPlaying: !isPlaying });
+    const { isPlaying, roomId, currentVideo } = get();
+    const nextPlaying = !isPlaying;
+    set({ isPlaying: nextPlaying });
+    if (roomId && currentVideo?.id) {
+      try {
+        const db = getDatabase(app);
+        setRtdb(ref(db, `rooms/${roomId}/playback/isPlaying`), nextPlaying);
+      } catch (err) {
+        console.error('Failed to sync togglePlay to RTDB:', err);
+      }
+    }
   },
 
   setPlaying: (isPlaying: boolean) => {
+    const { roomId, currentVideo } = get();
     set({ isPlaying });
+    if (roomId && currentVideo?.id) {
+      try {
+        const db = getDatabase(app);
+        setRtdb(ref(db, `rooms/${roomId}/playback/isPlaying`), isPlaying);
+      } catch (err) {
+        console.error('Failed to sync setPlaying to RTDB:', err);
+      }
+    }
   },
 
   setVideoId: (videoId: string, title?: string) => {

@@ -1,10 +1,11 @@
 import React, { useRef, useCallback } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import YoutubePlayer, { YoutubeIframeRef } from 'react-native-youtube-iframe';
 import { Theme } from '../theme';
+import { Video, Music2 } from 'lucide-react-native';
 
 interface VibeYoutubePlayerProps {
-  videoId: string;
+  videoId?: string | null;
   isPlaying: boolean;
   onStateChange?: (state: string) => void;
   height?: number;
@@ -31,7 +32,21 @@ export const VibeYoutubePlayer: React.FC<VibeYoutubePlayerProps> = ({
     console.warn('YouTube Player Warning/Error:', error);
   }, []);
 
-  const safeVideoId = videoId && videoId.trim().length > 0 ? videoId : 'dQw4w9WgXcQ';
+  const cleanVideoId = videoId && videoId.trim().length > 0 ? videoId.trim() : null;
+
+  if (!cleanVideoId) {
+    return (
+      <View style={[styles.wrapper, styles.emptyContainer, { height }]}>
+        <View style={styles.emptyIconBadge}>
+          <Music2 size={32} color={Theme.colors.primary} />
+        </View>
+        <Text style={styles.emptyTitle}>No Video Playing</Text>
+        <Text style={styles.emptySubtitle}>
+          Add a video to the room queue to start synchronized playback
+        </Text>
+      </View>
+    );
+  }
 
   if (Platform.OS === 'web') {
     return (
@@ -39,7 +54,7 @@ export const VibeYoutubePlayer: React.FC<VibeYoutubePlayerProps> = ({
         <iframe
           width="100%"
           height={height}
-          src={`https://www.youtube.com/embed/${safeVideoId}?autoplay=${isPlaying ? 1 : 0}`}
+          src={`https://www.youtube.com/embed/${cleanVideoId}?autoplay=${isPlaying ? 1 : 0}`}
           frameBorder="0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
@@ -55,7 +70,7 @@ export const VibeYoutubePlayer: React.FC<VibeYoutubePlayerProps> = ({
         ref={playerRef}
         height={height}
         play={isPlaying}
-        videoId={safeVideoId}
+        videoId={cleanVideoId}
         onChangeState={handleStateChange}
         onError={handleError}
         webViewProps={{
@@ -82,5 +97,32 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: Theme.colors.glassBorder,
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Theme.spacing.md,
+    backgroundColor: Theme.colors.cardBackground,
+  },
+  emptyIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 0, 85, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Theme.colors.textPrimary,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: Theme.colors.textMuted,
+    textAlign: 'center',
+    maxWidth: 260,
   },
 });

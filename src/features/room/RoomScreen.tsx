@@ -39,21 +39,20 @@ import {
   X,
 } from 'lucide-react-native';
 
+import { useRoomPresence } from '../../hooks/useRoomPresence';
 import { usePlayerStore } from '../../store/usePlayerStore';
 
 export const RoomScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'Room'>>();
   const navigation = useNavigation();
-  const { roomId, roomName = 'Vibe Room', initialVideoId = 'dQw4w9WgXcQ' } = route.params;
+  const { roomId, roomName = 'Vibe Room' } = route.params;
 
   const user = useAuthStore((state) => state.user);
   const getRoomById = useRoomStore((state) => state.getRoomById);
   const activeRoom = getRoomById(roomId);
-  const roomMembers = activeRoom?.members || [user?.uid || 'user_1'];
 
-  const isHost = true; // Current user is host for room control
-
-  const { syncState, updateSyncState } = useRoomSync(roomId, user?.uid || 'guest', isHost);
+  const { members, roomExists, leaveRoom } = useRoomPresence(roomId, user?.uid, user?.displayName);
+  const { syncState, updateSyncState } = useRoomSync(roomId, user?.uid || 'guest');
   const { queue, addToQueue, removeFromQueue, moveQueueItem } = useRoomQueue(roomId);
 
   const [activeTab, setActiveTab] = useState<'chat' | 'queue' | 'members'>('chat');
@@ -72,8 +71,9 @@ export const RoomScreen = () => {
   const setVideoId = usePlayerStore((state) => state.setVideoId);
 
   useEffect(() => {
-    const activeVideoId = syncState.videoId || initialVideoId;
-    setVideoId(activeVideoId, roomName);
+    if (syncState.videoId) {
+      setVideoId(syncState.videoId, roomName);
+    }
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       minimize();
@@ -84,14 +84,20 @@ export const RoomScreen = () => {
     return () => {
       backHandler.remove();
     };
-  }, [syncState.videoId, initialVideoId, roomName]);
+  }, [syncState.videoId, roomName]);
 
   const handleBack = () => {
     minimize();
     navigation.goBack();
   };
 
+  const handleLeaveRoom = async () => {
+    await leaveRoom();
+    navigation.goBack();
+  };
+
   const handleTogglePlay = () => {
+    if (!syncState.videoId) return;
     const nextPlaying = !syncState.isPlaying;
     setPlaying(nextPlaying);
     updateSyncState(
@@ -131,6 +137,10 @@ export const RoomScreen = () => {
 
   const handleAddVideoToQueue = async (video: YoutubeVideo) => {
     await addToQueue(video, user);
+    // If no video is currently playing, set this new video as current playing
+    if (!syncState.videoId) {
+      updateSyncState(video.id, 0, true);
+    }
     setIsAddModalVisible(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -141,6 +151,25 @@ export const RoomScreen = () => {
     updateSyncState(item.videoId, 0, true);
     await removeFromQueue(item.id);
   };
+
+  if (!roomExists) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <Text style={{ fontSize: 20, fontWeight: '700', color: Theme.colors.textPrimary, marginBottom: 8 }}>
+          Room No Longer Exists
+        </Text>
+        <Text style={{ fontSize: 14, color: Theme.colors.textMuted, textAlign: 'center', marginBottom: 20 }}>
+          This sync room was deleted after all members left.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: Theme.colors.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 }}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '700' }}>Return to Home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -165,21 +194,25 @@ export const RoomScreen = () => {
             </View>
           </View>
         </View>
-        <TouchableOpacity style={styles.backButton}>
+        <TouchableOpacity style={styles.backButton} onPress={handleLeaveRoom}>
           <Share2 size={20} color={Theme.colors.accent} />
         </TouchableOpacity>
       </View>
 
       {/* Synchronized YouTube Video Player */}
       <VibeYoutubePlayer
-        videoId={syncState.videoId || initialVideoId}
+        videoId={syncState.videoId}
         isPlaying={syncState.isPlaying}
         height={220}
       />
 
       {/* Playback Host Controls */}
       <View style={styles.controlsRow}>
-        <TouchableOpacity style={styles.playButton} onPress={handleTogglePlay}>
+        <TouchableOpacity
+          style={[styles.playButton, !syncState.videoId && { opacity: 0.5 }]}
+          onPress={handleTogglePlay}
+          disabled={!syncState.videoId}
+        >
           {syncState.isPlaying ? (
             <Pause size={22} color="#FFF" />
           ) : (
@@ -190,7 +223,9 @@ export const RoomScreen = () => {
         <View style={styles.nowPlayingInfo}>
           <Text style={styles.nowPlayingLabel}>NOW PLAYING IN SYNC</Text>
           <Text style={styles.nowPlayingStatus} numberOfLines={1}>
-            {syncState.isPlaying ? 'Playing in sync' : 'Paused'} • {syncState.videoId}
+            {syncState.videoId
+              ? `${syncState.isPlaying ? 'Playing in sync' : 'Paused'} • ${syncState.videoId}`
+              : 'No video playing'}
           </Text>
         </View>
       </View>
@@ -233,7 +268,7 @@ export const RoomScreen = () => {
             style={{ marginRight: 6 }}
           />
           <Text style={[styles.tabText, activeTab === 'members' && styles.activeTabText]}>
-            Members ({roomMembers.length})
+            Members ({members.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -354,15 +389,15 @@ export const RoomScreen = () => {
 
       {activeTab === 'members' && (
         <ScrollView style={styles.tabContentContainer}>
-          <Text style={styles.subSectionTitle}>In This Room Now ({roomMembers.length})</Text>
-          {roomMembers.map((memId, idx) => (
-            <View key={memId + idx} style={styles.memberRow}>
+          <Text style={styles.subSectionTitle}>In This Room Now ({members.length})</Text>
+          {members.map((member, idx) => (
+            <View key={member.uid + idx} style={styles.memberRow}>
               <Image
-                source={{ uri: user?.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }}
+                source={{ uri: (member.uid === user?.uid ? user?.photoUrl : null) || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }}
                 style={styles.memberAvatar}
               />
               <Text style={styles.memberName}>
-                {memId === user?.uid ? `${user?.displayName || 'You'} (Host)` : `Member ${idx + 1}`}
+                {member.uid === user?.uid ? `${member.displayName || 'You'} (You)` : member.displayName || `Member ${idx + 1}`}
               </Text>
             </View>
           ))}

@@ -15,17 +15,7 @@ export const StandalonePlayerScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'StandalonePlayer'>>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   
-  const video = route.params?.video || {
-    id: 'dQw4w9WgXcQ',
-    title: 'Music Video',
-    thumbnailUrl: '',
-    channelName: 'VibeSync',
-    publishedAt: new Date().toISOString(),
-    duration: '',
-    viewCount: '0',
-    likeCount: '0',
-    description: '',
-  };
+  const video = route.params?.video;
 
   const user = useAuthStore((state) => state.user);
   const { toggleFavorite, isFavorite } = useFavoritesStore();
@@ -60,6 +50,21 @@ export const StandalonePlayerScreen = () => {
     navigation.goBack();
   };
 
+  if (!video) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <ArrowLeft size={20} color={Theme.colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Player</Text>
+          <View style={{ width: 36 }} />
+        </View>
+        <VibeYoutubePlayer videoId={null} isPlaying={false} />
+      </View>
+    );
+  }
+
   const viewCountNum = isNaN(parseInt(video.viewCount || '0', 10))
     ? 0
     : parseInt(video.viewCount || '0', 10);
@@ -87,7 +92,7 @@ export const StandalonePlayerScreen = () => {
 
       {/* YouTube Player */}
       <VibeYoutubePlayer
-        videoId={video.id || 'dQw4w9WgXcQ'}
+        videoId={video.id}
         isPlaying={isPlaying}
         onStateChange={(state) => {
           if (state === 'playing') setPlaying(true);

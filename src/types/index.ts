@@ -42,7 +42,7 @@ export interface RoomModel {
 }
 
 export interface PlayerSyncState {
-  videoId: string;
+  videoId: string | null;
   currentPosition: number;
   isPlaying: boolean;
   playbackSpeed: number;
