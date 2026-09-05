@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing & Coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Build Outputs & Bundles
+android/app/build/
+android/build/
+android/.gradle/
+android/app/.cxx/
+android/captures/
+.expo/
+web-build/
+dist/
+build/
+*.apk
+*.aab
+*.keystore
+*.jks
+*.p12
+*.pem
+
+# Local Configuration & Environment
+local.properties
+.env
+.env*.local
+*.env
+service-account*.json
+firebase-key*.json
+google-services.json.bak
+
+# Caches & Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.metro-health-check*
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temporary Files & Scratch
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.zip
+*.tar.gz
