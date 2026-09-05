@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { getDatabase, ref, set as firebaseSet, get as firebaseGet } from 'firebase/database';
 import { UserModel, UserSettings } from '../types';
 import { 
+  app,
   auth, 
   GoogleAuthProvider, 
   signInWithPopup, 
@@ -13,6 +15,7 @@ import {
 } from '../services/firebase';
 
 const USER_STORAGE_KEY = 'vibe_sync_user_profile';
+const USER_PROFILE_PREFIX = 'vibe_sync_profile_';
 const USERNAMES_KEY = 'vibe_sync_taken_usernames';
 const SETTINGS_KEY_PREFIX = 'vibe_sync_user_settings_';
 
@@ -38,25 +41,6 @@ const defaultUserSettings: UserSettings = {
   preferredLanguage: 'Global',
 };
 
-const initialUser: UserModel = {
-  uid: 'user_' + Date.now(),
-  displayName: 'Google Music User',
-  username: 'vibe_master',
-  email: 'user@gmail.com',
-  photoUrl: 'avatar_01',
-  isGuest: false,
-  createdAt: new Date().toISOString(),
-  lastSeen: new Date().toISOString(),
-  favorites: [],
-  friends: [],
-  settings: defaultUserSettings,
-  dataUsage: {
-    dailyBytes: 1048576,
-    weeklyBytes: 5242880,
-    monthlyBytes: 20971520,
-  },
-};
-
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
@@ -67,6 +51,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const json = await AsyncStorage.getItem(USER_STORAGE_KEY);
       if (json) {
         let storedUser: UserModel = JSON.parse(json);
+
+        // Check if there is a specific saved profile for this user UID
+        const userUidKey = `${USER_PROFILE_PREFIX}${storedUser.uid}`;
+        const uidProfileJson = await AsyncStorage.getItem(userUidKey);
+        if (uidProfileJson) {
+          try {
+            const uidProfile = JSON.parse(uidProfileJson);
+            storedUser = { ...storedUser, ...uidProfile };
+          } catch (e) {}
+        }
 
         // Load dedicated saved settings if present
         const savedSettingsJson = await AsyncStorage.getItem(`${SETTINGS_KEY_PREFIX}${storedUser.uid}`);
@@ -119,45 +113,60 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (firebaseUser) {
-        // Check if profile or settings already exist locally for this user
-        const existingProfileJson = await AsyncStorage.getItem(USER_STORAGE_KEY);
-        const existingSettingsJson = await AsyncStorage.getItem(`${SETTINGS_KEY_PREFIX}${firebaseUser.uid}`);
+        const uid = firebaseUser.uid;
+        const userUidKey = `${USER_PROFILE_PREFIX}${uid}`;
+        const settingsUidKey = `${SETTINGS_KEY_PREFIX}${uid}`;
 
-        let existingUser: Partial<UserModel> = {};
-        if (existingProfileJson) {
+        // 1. Check local storage for saved profile by UID
+        const existingUidProfileJson = await AsyncStorage.getItem(userUidKey);
+        let savedProfile: Partial<UserModel> | null = null;
+        if (existingUidProfileJson) {
           try {
-            const parsed = JSON.parse(existingProfileJson);
-            if (parsed.uid === firebaseUser.uid || parsed.email === firebaseUser.email) {
-              existingUser = parsed;
-            }
+            savedProfile = JSON.parse(existingUidProfileJson);
           } catch (err) {}
         }
 
+        // 2. Check Firebase Realtime Database for saved profile
+        if (!savedProfile) {
+          try {
+            const db = getDatabase(app);
+            const rtdbSnapshot = await firebaseGet(ref(db, `users/${uid}`));
+            if (rtdbSnapshot.exists()) {
+              savedProfile = rtdbSnapshot.val();
+            }
+          } catch (err) {
+            console.warn('Failed to fetch user profile from RTDB:', err);
+          }
+        }
+
+        // 3. Check settings
+        const existingSettingsJson = await AsyncStorage.getItem(settingsUidKey);
         let existingSettings = defaultUserSettings;
         if (existingSettingsJson) {
           try {
             existingSettings = { ...defaultUserSettings, ...JSON.parse(existingSettingsJson) };
           } catch (err) {}
-        } else if (existingUser.settings) {
-          existingSettings = { ...defaultUserSettings, ...existingUser.settings };
+        } else if (savedProfile?.settings) {
+          existingSettings = { ...defaultUserSettings, ...savedProfile.settings };
         }
 
-        const userDisplayName = existingUser.displayName || firebaseUser.displayName || 'Vibe User';
+        const userDisplayName = savedProfile?.displayName || firebaseUser.displayName || 'Vibe User';
         const userEmail = firebaseUser.email || 'user@gmail.com';
         const rawUsername = userEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
-        const generatedUsername = existingUser.username || (rawUsername.length >= 3 ? rawUsername : 'vibe_' + Math.floor(1000 + Math.random() * 9000));
+        const generatedUsername = savedProfile?.username || (rawUsername.length >= 3 ? rawUsername : 'vibe_' + Math.floor(1000 + Math.random() * 9000));
+        const userPhotoUrl = savedProfile?.photoUrl || firebaseUser.photoURL || 'avatar_01';
 
         const googleUser: UserModel = {
-          uid: firebaseUser.uid,
+          uid,
           displayName: userDisplayName,
           username: generatedUsername,
           email: userEmail,
-          photoUrl: existingUser.photoUrl || firebaseUser.photoURL || 'avatar_01',
+          photoUrl: userPhotoUrl,
           isGuest: false,
-          createdAt: existingUser.createdAt || new Date().toISOString(),
+          createdAt: savedProfile?.createdAt || new Date().toISOString(),
           lastSeen: new Date().toISOString(),
-          favorites: existingUser.favorites || [],
-          friends: existingUser.friends || [],
+          favorites: savedProfile?.favorites || [],
+          friends: savedProfile?.friends || [],
           settings: existingSettings,
           dataUsage: {
             dailyBytes: 1048576,
@@ -166,9 +175,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           },
         };
 
-        // Save profile and settings persistently
+        // Save profile persistently both to session key and UID-keyed storage
         await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(googleUser));
-        await AsyncStorage.setItem(`${SETTINGS_KEY_PREFIX}${googleUser.uid}`, JSON.stringify(existingSettings));
+        await AsyncStorage.setItem(userUidKey, JSON.stringify(googleUser));
+        await AsyncStorage.setItem(settingsUidKey, JSON.stringify(existingSettings));
+
+        // Sync to Firebase Realtime Database
+        try {
+          const db = getDatabase(app);
+          await firebaseSet(ref(db, `users/${uid}`), {
+            uid,
+            displayName: userDisplayName,
+            username: generatedUsername,
+            email: userEmail,
+            photoUrl: userPhotoUrl,
+            lastSeen: Date.now(),
+          });
+        } catch (err) {
+          console.warn('Failed to sync login profile to RTDB:', err);
+        }
 
         set({ user: googleUser, isAuthenticated: true, isLoading: false });
         return { success: true };
@@ -184,8 +209,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setUser: async (user: UserModel | null) => {
     if (user) {
+      const userUidKey = `${USER_PROFILE_PREFIX}${user.uid}`;
+      const settingsUidKey = `${SETTINGS_KEY_PREFIX}${user.uid}`;
       await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-      await AsyncStorage.setItem(`${SETTINGS_KEY_PREFIX}${user.uid}`, JSON.stringify(user.settings));
+      await AsyncStorage.setItem(userUidKey, JSON.stringify(user));
+      await AsyncStorage.setItem(settingsUidKey, JSON.stringify(user.settings));
     } else {
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
     }
@@ -235,9 +263,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         photoUrl: newPhotoUrl !== undefined ? newPhotoUrl : currentUser.photoUrl,
       };
 
+      const userUidKey = `${USER_PROFILE_PREFIX}${currentUser.uid}`;
       await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-      set({ user: updatedUser });
+      await AsyncStorage.setItem(userUidKey, JSON.stringify(updatedUser));
 
+      // Sync to Firebase Realtime Database for cross-device & re-login durability
+      try {
+        const db = getDatabase(app);
+        await firebaseSet(ref(db, `users/${currentUser.uid}`), {
+          uid: currentUser.uid,
+          displayName: updatedUser.displayName,
+          username: updatedUser.username,
+          email: updatedUser.email,
+          photoUrl: updatedUser.photoUrl,
+          updatedAt: Date.now(),
+        });
+      } catch (err) {
+        console.warn('Failed to sync profile update to RTDB:', err);
+      }
+
+      set({ user: updatedUser });
       return { success: true };
     } catch (e) {
       console.error('Failed to update user profile:', e);
@@ -259,9 +304,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       settings: mergedSettings,
     };
 
-    // Save both to profile key and dedicated settings key for 100% durability
+    const userUidKey = `${USER_PROFILE_PREFIX}${currentUser.uid}`;
+    const settingsUidKey = `${SETTINGS_KEY_PREFIX}${currentUser.uid}`;
+
     await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-    await AsyncStorage.setItem(`${SETTINGS_KEY_PREFIX}${currentUser.uid}`, JSON.stringify(mergedSettings));
+    await AsyncStorage.setItem(userUidKey, JSON.stringify(updatedUser));
+    await AsyncStorage.setItem(settingsUidKey, JSON.stringify(mergedSettings));
+
     set({ user: updatedUser });
   },
 
@@ -271,7 +320,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) {
       console.warn('Firebase signout warning:', e);
     }
+    // Only remove active session key, preserve account-keyed profile (USER_PROFILE_PREFIX)
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
     set({ user: null, isAuthenticated: false, isLoading: false });
   },
 }));
+
