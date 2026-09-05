@@ -58,6 +58,17 @@ export interface ChatMessageModel {
   timestamp: string;
 }
 
+export interface QueueItemModel {
+  id: string;
+  videoId: string;
+  title: string;
+  thumbnailUrl: string;
+  channelName: string;
+  addedBy: string;
+  addedByName: string;
+  addedAt: number;
+}
+
 export interface YoutubeVideo {
   id: string;
   title: string;

@@ -1,12 +1,16 @@
 package com.anonymous.vibesync
 
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
+import com.anonymous.vibesync.pip.PipModule
 
 import expo.modules.ReactActivityDelegateWrapper
 
@@ -49,5 +53,46 @@ class MainActivity : ReactActivity() {
       if (!moveTaskToBack(true)) {
           super.invokeDefaultOnBackPressed()
       }
+  }
+
+  fun updatePipParams(enabled: Boolean) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          try {
+              val builder = PictureInPictureParams.Builder()
+                  .setAspectRatio(Rational(16, 9))
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                  builder.setAutoEnterEnabled(enabled)
+              }
+              setPictureInPictureParams(builder.build())
+          } catch (e: Exception) {
+              e.printStackTrace()
+          }
+      }
+  }
+
+  fun enterPipMode() {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          try {
+              val builder = PictureInPictureParams.Builder()
+                  .setAspectRatio(Rational(16, 9))
+              enterPictureInPictureMode(builder.build())
+          } catch (e: Exception) {
+              e.printStackTrace()
+          }
+      }
+  }
+
+  override fun onUserLeaveHint() {
+      super.onUserLeaveHint()
+      if (PipModule.isPipEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          if (!isInPictureInPictureMode) {
+              enterPipMode()
+          }
+      }
+  }
+
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+      super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+      PipModule.sendPipEvent(isInPictureInPictureMode)
   }
 }

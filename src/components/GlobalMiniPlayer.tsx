@@ -9,10 +9,10 @@ import { Play, Pause, X, Maximize2, Radio } from 'lucide-react-native';
 
 export const GlobalMiniPlayer: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { currentVideo, roomId, roomName, isPlaying, isMinimized, togglePlay, expand, close } =
+  const { currentVideo, roomId, roomName, isPlaying, isMinimized, isSystemPip, togglePlay, expand, close } =
     usePlayerStore();
 
-  if (!currentVideo || !isMinimized) {
+  if (!currentVideo || !isMinimized || isSystemPip) {
     return null;
   }
 

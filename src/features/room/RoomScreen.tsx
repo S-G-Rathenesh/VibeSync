@@ -8,13 +8,18 @@ import {
   StyleSheet,
   Image,
   BackHandler,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
 import { VibeYoutubePlayer } from '../../components/VibeYoutubePlayer';
 import { useRoomSync } from '../../hooks/useRoomSync';
+import { useRoomQueue } from '../../hooks/useRoomQueue';
 import { useAuthStore } from '../../store/useAuthStore';
-import { ChatMessageModel } from '../../types';
+import { useRoomStore } from '../../store/useRoomStore';
+import { searchYoutubeVideos } from '../../services/youtubeService';
+import { ChatMessageModel, YoutubeVideo, QueueItemModel } from '../../types';
 import { Theme } from '../../theme';
 import {
   Play,
@@ -25,6 +30,13 @@ import {
   Send,
   ArrowLeft,
   Share2,
+  Plus,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Music,
+  Search,
+  X,
 } from 'lucide-react-native';
 
 import { usePlayerStore } from '../../store/usePlayerStore';
@@ -35,12 +47,24 @@ export const RoomScreen = () => {
   const { roomId, roomName = 'Vibe Room', initialVideoId = 'dQw4w9WgXcQ' } = route.params;
 
   const user = useAuthStore((state) => state.user);
+  const getRoomById = useRoomStore((state) => state.getRoomById);
+  const activeRoom = getRoomById(roomId);
+  const roomMembers = activeRoom?.members || [user?.uid || 'user_1'];
+
   const isHost = true; // Current user is host for room control
 
   const { syncState, updateSyncState } = useRoomSync(roomId, user?.uid || 'guest', isHost);
+  const { queue, addToQueue, removeFromQueue, moveQueueItem } = useRoomQueue(roomId);
+
   const [activeTab, setActiveTab] = useState<'chat' | 'queue' | 'members'>('chat');
   const [chatMessages, setChatMessages] = useState<ChatMessageModel[]>([]);
   const [messageText, setMessageText] = useState('');
+
+  // Add Song Modal State
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<YoutubeVideo[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const playVideo = usePlayerStore((state) => state.playVideo);
   const minimize = usePlayerStore((state) => state.minimize);
@@ -84,7 +108,7 @@ export const RoomScreen = () => {
     const newMessage: ChatMessageModel = {
       id: `m_${Date.now()}`,
       senderId: user?.uid || 'guest',
-      senderName: user?.displayName.split(' ')[0] || 'Guest',
+      senderName: user?.displayName?.split(' ')[0] || 'Guest',
       text: messageText.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
@@ -93,11 +117,40 @@ export const RoomScreen = () => {
     setMessageText('');
   };
 
+  const handleSearchSong = async (query: string) => {
+    setSearchQuery(query);
+    if (query.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    const results = await searchYoutubeVideos(query);
+    setSearchResults(results);
+    setIsSearching(false);
+  };
+
+  const handleAddVideoToQueue = async (video: YoutubeVideo) => {
+    await addToQueue(video, user);
+    setIsAddModalVisible(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const handlePlayNow = async (item: QueueItemModel) => {
+    setVideoId(item.videoId, item.title);
+    updateSyncState(item.videoId, 0, true);
+    await removeFromQueue(item.id);
+  };
+
   return (
     <View style={styles.container}>
       {/* Header Bar */}
       <View style={styles.topHeader}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={handleBack}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
           <ArrowLeft size={20} color={Theme.colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerTitleGroup}>
@@ -136,7 +189,7 @@ export const RoomScreen = () => {
 
         <View style={styles.nowPlayingInfo}>
           <Text style={styles.nowPlayingLabel}>NOW PLAYING IN SYNC</Text>
-          <Text style={styles.nowPlayingStatus}>
+          <Text style={styles.nowPlayingStatus} numberOfLines={1}>
             {syncState.isPlaying ? 'Playing in sync' : 'Paused'} • {syncState.videoId}
           </Text>
         </View>
@@ -165,7 +218,9 @@ export const RoomScreen = () => {
             color={activeTab === 'queue' ? Theme.colors.primary : Theme.colors.textMuted}
             style={{ marginRight: 6 }}
           />
-          <Text style={[styles.tabText, activeTab === 'queue' && styles.activeTabText]}>Queue</Text>
+          <Text style={[styles.tabText, activeTab === 'queue' && styles.activeTabText]}>
+            Queue ({queue.length})
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -178,7 +233,7 @@ export const RoomScreen = () => {
             style={{ marginRight: 6 }}
           />
           <Text style={[styles.tabText, activeTab === 'members' && styles.activeTabText]}>
-            Members (4)
+            Members ({roomMembers.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -213,35 +268,158 @@ export const RoomScreen = () => {
       )}
 
       {activeTab === 'queue' && (
-        <ScrollView style={styles.tabContentContainer}>
-          <Text style={styles.subSectionTitle}>Upcoming Video Queue</Text>
-          <View style={styles.queueItem}>
-            <Text style={styles.queueIndex}>1</Text>
-            <Text style={styles.queueTitle} numberOfLines={1}>
-              The Weeknd - Blinding Lights (Official Music Video)
-            </Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.queueHeaderRow}>
+            <Text style={styles.subSectionTitle}>Upcoming Video Queue</Text>
+            <TouchableOpacity
+              style={styles.addSongBtn}
+              onPress={() => setIsAddModalVisible(true)}
+            >
+              <Plus size={14} color="#FFF" style={{ marginRight: 4 }} />
+              <Text style={styles.addSongBtnText}>Add Song</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.queueItem}>
-            <Text style={styles.queueIndex}>2</Text>
-            <Text style={styles.queueTitle} numberOfLines={1}>
-              Dua Lipa - Levitating Featuring DaBaby
-            </Text>
-          </View>
-        </ScrollView>
+
+          {queue.length === 0 ? (
+            <View style={styles.emptyQueueContainer}>
+              <Music size={44} color={Theme.colors.textMuted} style={{ marginBottom: 10 }} />
+              <Text style={styles.emptyQueueTitle}>Queue is Empty</Text>
+              <Text style={styles.emptyQueueSubtitle}>
+                Search YouTube and add something to start your room playlist.
+              </Text>
+              <TouchableOpacity
+                style={styles.searchPromptBtn}
+                onPress={() => setIsAddModalVisible(true)}
+              >
+                <Plus size={16} color="#FFF" style={{ marginRight: 6 }} />
+                <Text style={styles.searchPromptBtnText}>Add Song to Queue</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={styles.queueListContainer} showsVerticalScrollIndicator={false}>
+              {queue.map((item, index) => (
+                <View key={item.id} style={styles.queueCard}>
+                  <Text style={styles.queueIndex}>{index + 1}</Text>
+                  
+                  <Image source={{ uri: item.thumbnailUrl }} style={styles.queueThumb} />
+
+                  <View style={styles.queueMeta}>
+                    <Text style={styles.queueTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.queueSubtitle} numberOfLines={1}>
+                      {item.channelName} • Added by {item.addedByName}
+                    </Text>
+                  </View>
+
+                  <View style={styles.queueActions}>
+                    <TouchableOpacity
+                      style={styles.playNowBtn}
+                      onPress={() => handlePlayNow(item)}
+                    >
+                      <Play size={12} color="#000" fill="#000" />
+                    </TouchableOpacity>
+
+                    {index > 0 && (
+                      <TouchableOpacity
+                        style={styles.reorderBtn}
+                        onPress={() => moveQueueItem(index, 'up')}
+                      >
+                        <ChevronUp size={16} color={Theme.colors.textMuted} />
+                      </TouchableOpacity>
+                    )}
+
+                    {index < queue.length - 1 && (
+                      <TouchableOpacity
+                        style={styles.reorderBtn}
+                        onPress={() => moveQueueItem(index, 'down')}
+                      >
+                        <ChevronDown size={16} color={Theme.colors.textMuted} />
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => removeFromQueue(item.id)}
+                    >
+                      <Trash2 size={16} color={Theme.colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
       )}
 
       {activeTab === 'members' && (
         <ScrollView style={styles.tabContentContainer}>
-          <Text style={styles.subSectionTitle}>In This Room Now</Text>
-          <View style={styles.memberRow}>
-            <Image
-              source={{ uri: user?.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }}
-              style={styles.memberAvatar}
-            />
-            <Text style={styles.memberName}>{user?.displayName || 'You'} (Host)</Text>
-          </View>
+          <Text style={styles.subSectionTitle}>In This Room Now ({roomMembers.length})</Text>
+          {roomMembers.map((memId, idx) => (
+            <View key={memId + idx} style={styles.memberRow}>
+              <Image
+                source={{ uri: user?.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }}
+                style={styles.memberAvatar}
+              />
+              <Text style={styles.memberName}>
+                {memId === user?.uid ? `${user?.displayName || 'You'} (Host)` : `Member ${idx + 1}`}
+              </Text>
+            </View>
+          ))}
         </ScrollView>
       )}
+
+      {/* Add Song Modal */}
+      <Modal
+        visible={isAddModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setIsAddModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add Song to Room Queue</Text>
+            <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
+              <X size={24} color={Theme.colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalSearchBar}>
+            <Search size={18} color={Theme.colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Search YouTube videos..."
+              placeholderTextColor={Theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={handleSearchSong}
+              autoFocus
+            />
+          </View>
+
+          {isSearching ? (
+            <ActivityIndicator size="large" color={Theme.colors.primary} style={{ marginTop: 40 }} />
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: Theme.spacing.md }}>
+              {searchResults.map((video) => (
+                <View key={video.id} style={styles.searchResultCard}>
+                  <Image source={{ uri: video.thumbnailUrl }} style={styles.searchResultThumb} />
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.searchResultTitle} numberOfLines={2}>{video.title}</Text>
+                    <Text style={styles.searchResultChannel} numberOfLines={1}>{video.channelName}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.addToQueueBtn}
+                    onPress={() => handleAddVideoToQueue(video)}
+                  >
+                    <Plus size={16} color="#FFF" style={{ marginRight: 4 }} />
+                    <Text style={styles.addToQueueText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -421,26 +599,120 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Theme.colors.textPrimary,
-    marginBottom: 12,
   },
-  queueItem: {
+  queueHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+  },
+  addSongBtn: {
+    backgroundColor: Theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Theme.borderRadius.full,
+  },
+  addSongBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyQueueContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+    marginTop: 30,
+  },
+  emptyQueueTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Theme.colors.textPrimary,
+    marginBottom: 6,
+  },
+  emptyQueueSubtitle: {
+    fontSize: 13,
+    color: Theme.colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  searchPromptBtn: {
+    backgroundColor: Theme.colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: Theme.borderRadius.full,
+  },
+  searchPromptBtnText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  queueListContainer: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.lg,
+  },
+  queueCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Theme.colors.cardBackground,
-    padding: Theme.spacing.md,
     borderRadius: Theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.cardBorder,
+    padding: 8,
     marginBottom: 8,
   },
   queueIndex: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Theme.colors.accent,
-    marginRight: 12,
+    width: 22,
+    textAlign: 'center',
+    marginRight: 6,
+  },
+  queueThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    backgroundColor: '#222',
+    marginRight: 10,
+  },
+  queueMeta: {
+    flex: 1,
+    marginRight: 6,
   },
   queueTitle: {
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '700',
     color: Theme.colors.textPrimary,
-    flex: 1,
+    marginBottom: 2,
+  },
+  queueSubtitle: {
+    fontSize: 11,
+    color: Theme.colors.textMuted,
+  },
+  queueActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  playNowBtn: {
+    backgroundColor: Theme.colors.accent,
+    borderRadius: Theme.borderRadius.full,
+    padding: 6,
+    marginRight: 6,
+  },
+  reorderBtn: {
+    padding: 4,
+  },
+  deleteBtn: {
+    padding: 6,
+    marginLeft: 4,
   },
   memberRow: {
     flexDirection: 'row',
@@ -460,5 +732,79 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: Theme.colors.textPrimary,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Theme.colors.background,
+    paddingTop: 50,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Theme.colors.textPrimary,
+  },
+  modalSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.glassBackground,
+    borderRadius: Theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.glassBorder,
+    paddingHorizontal: 14,
+    height: 48,
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
+  },
+  modalInput: {
+    flex: 1,
+    color: Theme.colors.textPrimary,
+    fontSize: 14,
+  },
+  searchResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.cardBackground,
+    borderRadius: Theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.cardBorder,
+    padding: 8,
+    marginBottom: 8,
+  },
+  searchResultThumb: {
+    width: 60,
+    height: 45,
+    borderRadius: 6,
+    backgroundColor: '#222',
+    marginRight: 10,
+  },
+  searchResultTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Theme.colors.textPrimary,
+    marginBottom: 2,
+  },
+  searchResultChannel: {
+    fontSize: 11,
+    color: Theme.colors.primary,
+  },
+  addToQueueBtn: {
+    backgroundColor: Theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Theme.borderRadius.sm,
+  },
+  addToQueueText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

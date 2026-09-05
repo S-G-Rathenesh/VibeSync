@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { RootStackParamList, MainTabParamList } from './types';
 import { useAuthStore } from '../store/useAuthStore';
+import { usePlayerStore } from '../store/usePlayerStore';
+import { pipService } from '../services/pipService';
+import { VibeYoutubePlayer } from '../components/VibeYoutubePlayer';
 import { Theme } from '../theme';
 
 import { LoginScreen } from '../features/auth/LoginScreen';
@@ -86,6 +90,14 @@ const MainTabNavigator = () => {
 
 export const RootNavigator = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { currentVideo, isPlaying, isSystemPip, setSystemPip, setPlaying } = usePlayerStore();
+
+  useEffect(() => {
+    const unsubscribe = pipService.subscribePipMode((isInPip) => {
+      setSystemPip(isInPip);
+    });
+    return () => unsubscribe();
+  }, [setSystemPip]);
 
   return (
     <NavigationContainer>
@@ -113,6 +125,30 @@ export const RootNavigator = () => {
         )}
       </Stack.Navigator>
       <GlobalMiniPlayer />
+
+      {isSystemPip && currentVideo ? (
+        <View style={styles.systemPipOverlay}>
+          <VibeYoutubePlayer
+            videoId={currentVideo.id}
+            isPlaying={isPlaying}
+            onStateChange={(state) => {
+              if (state === 'playing') setPlaying(true);
+              if (state === 'paused') setPlaying(false);
+            }}
+            height={220}
+          />
+        </View>
+      ) : null}
     </NavigationContainer>
   );
 };
+
+const styles = StyleSheet.create({
+  systemPipOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 99999,
+  },
+});

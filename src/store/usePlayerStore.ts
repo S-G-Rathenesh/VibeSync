@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { YoutubeVideo } from '../types';
+import { pipService } from '../services/pipService';
 
 interface PlayerState {
   currentVideo: YoutubeVideo | null;
@@ -7,11 +8,13 @@ interface PlayerState {
   roomName: string | null;
   isPlaying: boolean;
   isMinimized: boolean;
+  isSystemPip: boolean;
 
   playVideo: (video: YoutubeVideo, roomId?: string | null, roomName?: string | null) => void;
   togglePlay: () => void;
   setPlaying: (isPlaying: boolean) => void;
   setVideoId: (videoId: string, title?: string) => void;
+  setSystemPip: (isPip: boolean) => void;
   minimize: () => void;
   expand: () => void;
   close: () => void;
@@ -23,14 +26,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   roomName: null,
   isPlaying: false,
   isMinimized: false,
+  isSystemPip: false,
 
   playVideo: (video: YoutubeVideo, roomId = null, roomName = null) => {
+    pipService.setPipEnabled(true);
     set({
       currentVideo: video,
       roomId,
       roomName,
       isPlaying: true,
       isMinimized: false,
+      isSystemPip: false,
     });
   },
 
@@ -44,6 +50,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   setVideoId: (videoId: string, title?: string) => {
+    pipService.setPipEnabled(true);
     const { currentVideo } = get();
     if (currentVideo) {
       set({
@@ -68,8 +75,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         },
         isPlaying: true,
         isMinimized: false,
+        isSystemPip: false,
       });
     }
+  },
+
+  setSystemPip: (isSystemPip: boolean) => {
+    set({ isSystemPip });
   },
 
   minimize: () => {
@@ -80,16 +92,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   expand: () => {
-    set({ isMinimized: false });
+    set({ isMinimized: false, isSystemPip: false });
   },
 
   close: () => {
+    pipService.setPipEnabled(false);
     set({
       currentVideo: null,
       roomId: null,
       roomName: null,
       isPlaying: false,
       isMinimized: false,
+      isSystemPip: false,
     });
   },
 }));
