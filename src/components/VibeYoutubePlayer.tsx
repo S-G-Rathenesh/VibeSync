@@ -61,6 +61,11 @@ export const VibeYoutubePlayer: React.FC<VibeYoutubePlayerProps> = ({
         webViewProps={{
           allowsInlineMediaPlayback: true,
           allowsFullscreenVideo: true,
+          androidLayerType: 'hardware',
+          mediaPlaybackRequiresUserAction: false,
+          domStorageEnabled: true,
+          javaScriptEnabled: true,
+          mixedContentMode: 'always',
         }}
       />
     </View>
