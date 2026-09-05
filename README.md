@@ -69,7 +69,6 @@ Download the latest release of **VibeSync** for Android:
 </p>
 <p align="center">
   <img src="Screenshots/05-player.png" width="200" alt="YouTube Player"/>
-  <img src="Screenshots/06-profile.png" width="200" alt="User Profile"/>
   <img src="Screenshots/07-avatar-selection.png" width="200" alt="Avatar Selection"/>
   <img src="Screenshots/08-settings.png" width="200" alt="App Settings"/>
 </p>
