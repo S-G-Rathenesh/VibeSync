@@ -1,4 +1,4 @@
-package com.anonymous.vibesync.pip
+package com.vibesync.vibe_sync.pip
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

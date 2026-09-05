@@ -8,6 +8,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser
 } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
 const firebaseConfig = {
@@ -22,6 +23,7 @@ const firebaseConfig = {
 
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
+export const firestore = getFirestore(app);
 export const WEB_CLIENT_ID = "142908089025-9u7anft3vco3uk75qaouu0m69hj4s86i.apps.googleusercontent.com";
 
 // Configure Native Google Sign-In if available
@@ -40,3 +42,4 @@ if (Platform.OS !== 'web') {
 
 export { GoogleAuthProvider, signInWithPopup, signInWithCredential, firebaseSignOut, onAuthStateChanged, GoogleSignin };
 export type { FirebaseUser };
+

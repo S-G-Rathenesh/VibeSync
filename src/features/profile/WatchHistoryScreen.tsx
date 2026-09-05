@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,7 +12,13 @@ import { ArrowLeft, Clock, Trash2 } from 'lucide-react-native';
 export const WatchHistoryScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const user = useAuthStore((state) => state.user);
-  const { history, clearHistory } = useHistoryStore();
+  const { history, loadHistory, clearHistory } = useHistoryStore();
+
+  useEffect(() => {
+    if (user?.uid) {
+      loadHistory(user.uid);
+    }
+  }, [user?.uid]);
 
   return (
     <View style={styles.container}>

@@ -1,4 +1,4 @@
-package com.anonymous.vibesync
+package com.vibesync.vibe_sync
 
 import android.app.Application
 import android.content.res.Configuration
@@ -14,7 +14,7 @@ import com.facebook.soloader.SoLoader
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
-import com.anonymous.vibesync.pip.PipPackage
+import com.vibesync.vibe_sync.pip.PipPackage
 
 class MainApplication : Application(), ReactApplication {
 

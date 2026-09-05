@@ -1,4 +1,4 @@
-package com.anonymous.vibesync.pip
+package com.vibesync.vibe_sync.pip
 
 import android.app.PictureInPictureParams
 import android.os.Build
@@ -8,7 +8,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.anonymous.vibesync.MainActivity
+import com.vibesync.vibe_sync.MainActivity
 
 class PipModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 

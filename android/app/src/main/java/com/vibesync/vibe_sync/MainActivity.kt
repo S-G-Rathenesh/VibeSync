@@ -1,4 +1,4 @@
-package com.anonymous.vibesync
+package com.vibesync.vibe_sync
 
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
@@ -10,7 +10,7 @@ import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
-import com.anonymous.vibesync.pip.PipModule
+import com.vibesync.vibe_sync.pip.PipModule
 
 import expo.modules.ReactActivityDelegateWrapper
 

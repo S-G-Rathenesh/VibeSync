@@ -1,17 +1,17 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { getDatabase, ref, set as firebaseSet, get as firebaseGet } from 'firebase/database';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UserModel, UserSettings } from '../types';
 import { 
   app,
   auth, 
+  firestore,
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithCredential, 
   GoogleSignin, 
-  firebaseSignOut,
-  onAuthStateChanged 
+  firebaseSignOut 
 } from '../services/firebase';
 
 const USER_STORAGE_KEY = 'vibe_sync_user_profile';
@@ -126,17 +126,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           } catch (err) {}
         }
 
-        // 2. Check Firebase Realtime Database for saved profile
-        if (!savedProfile) {
-          try {
-            const db = getDatabase(app);
-            const rtdbSnapshot = await firebaseGet(ref(db, `users/${uid}`));
-            if (rtdbSnapshot.exists()) {
-              savedProfile = rtdbSnapshot.val();
-            }
-          } catch (err) {
-            console.warn('Failed to fetch user profile from RTDB:', err);
+        // 2. Check Firestore for saved profile (Authoritative)
+        try {
+          const userDocRef = doc(firestore, 'users', uid);
+          const docSnap = await getDoc(userDocRef);
+          if (docSnap.exists()) {
+            const firestoreData = docSnap.data() as Partial<UserModel>;
+            savedProfile = { ...savedProfile, ...firestoreData };
           }
+        } catch (err) {
+          console.warn('Failed to fetch user profile from Firestore:', err);
         }
 
         // 3. Check settings
@@ -180,19 +179,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await AsyncStorage.setItem(userUidKey, JSON.stringify(googleUser));
         await AsyncStorage.setItem(settingsUidKey, JSON.stringify(existingSettings));
 
-        // Sync to Firebase Realtime Database
+        // Sync to Firestore (Authoritative Profile Store)
         try {
-          const db = getDatabase(app);
-          await firebaseSet(ref(db, `users/${uid}`), {
+          await setDoc(doc(firestore, 'users', uid), {
             uid,
             displayName: userDisplayName,
             username: generatedUsername,
             email: userEmail,
             photoUrl: userPhotoUrl,
-            lastSeen: Date.now(),
-          });
+            lastSeen: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
         } catch (err) {
-          console.warn('Failed to sync login profile to RTDB:', err);
+          console.warn('Failed to sync login profile to Firestore:', err);
         }
 
         set({ user: googleUser, isAuthenticated: true, isLoading: false });
@@ -267,19 +266,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
       await AsyncStorage.setItem(userUidKey, JSON.stringify(updatedUser));
 
-      // Sync to Firebase Realtime Database for cross-device & re-login durability
+      // Sync to Firestore for authoritative cross-session & cross-device profile persistence
       try {
-        const db = getDatabase(app);
-        await firebaseSet(ref(db, `users/${currentUser.uid}`), {
+        await setDoc(doc(firestore, 'users', currentUser.uid), {
           uid: currentUser.uid,
           displayName: updatedUser.displayName,
           username: updatedUser.username,
           email: updatedUser.email,
           photoUrl: updatedUser.photoUrl,
-          updatedAt: Date.now(),
-        });
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
       } catch (err) {
-        console.warn('Failed to sync profile update to RTDB:', err);
+        console.warn('Failed to sync profile update to Firestore:', err);
       }
 
       set({ user: updatedUser });
@@ -310,6 +308,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
     await AsyncStorage.setItem(userUidKey, JSON.stringify(updatedUser));
     await AsyncStorage.setItem(settingsUidKey, JSON.stringify(mergedSettings));
+
+    try {
+      await setDoc(doc(firestore, 'users', currentUser.uid), {
+        settings: mergedSettings,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Failed to sync settings to Firestore:', err);
+    }
 
     set({ user: updatedUser });
   },
