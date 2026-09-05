@@ -63,7 +63,6 @@ Download the latest release of **VibeSync** for Android:
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="Screenshots/01-splash.png" width="200" alt="Splash Screen"/>
   <img src="Screenshots/02-login.png" width="200" alt="Login Screen"/>
   <img src="Screenshots/03-home.png" width="200" alt="Home Screen"/>
   <img src="Screenshots/04-search.png" width="200" alt="Search Screen"/>
