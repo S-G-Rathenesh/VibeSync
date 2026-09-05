@@ -21,6 +21,7 @@ import { SettingsScreen } from '../features/profile/SettingsScreen';
 import { EditProfileScreen } from '../features/profile/EditProfileScreen';
 import { NotificationsScreen } from '../features/notifications/NotificationsScreen';
 import { PrivacyPolicyScreen } from '../features/settings/PrivacyPolicyScreen';
+import { GlobalMiniPlayer } from '../components/GlobalMiniPlayer';
 
 import { Home, Search, Users, User } from 'lucide-react-native';
 
@@ -111,6 +112,7 @@ export const RootNavigator = () => {
           </>
         )}
       </Stack.Navigator>
+      <GlobalMiniPlayer />
     </NavigationContainer>
   );
 };

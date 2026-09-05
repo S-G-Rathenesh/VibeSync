@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TextInput,
   StyleSheet,
   Image,
+  BackHandler,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
@@ -26,6 +27,8 @@ import {
   Share2,
 } from 'lucide-react-native';
 
+import { usePlayerStore } from '../../store/usePlayerStore';
+
 export const RoomScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'Room'>>();
   const navigation = useNavigation();
@@ -39,11 +42,38 @@ export const RoomScreen = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessageModel[]>([]);
   const [messageText, setMessageText] = useState('');
 
+  const playVideo = usePlayerStore((state) => state.playVideo);
+  const minimize = usePlayerStore((state) => state.minimize);
+  const setPlaying = usePlayerStore((state) => state.setPlaying);
+  const setVideoId = usePlayerStore((state) => state.setVideoId);
+
+  useEffect(() => {
+    const activeVideoId = syncState.videoId || initialVideoId;
+    setVideoId(activeVideoId, roomName);
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      minimize();
+      navigation.goBack();
+      return true;
+    });
+
+    return () => {
+      backHandler.remove();
+    };
+  }, [syncState.videoId, initialVideoId, roomName]);
+
+  const handleBack = () => {
+    minimize();
+    navigation.goBack();
+  };
+
   const handleTogglePlay = () => {
+    const nextPlaying = !syncState.isPlaying;
+    setPlaying(nextPlaying);
     updateSyncState(
       syncState.videoId,
       syncState.currentPosition,
-      !syncState.isPlaying,
+      nextPlaying,
       syncState.playbackSpeed
     );
   };
@@ -67,7 +97,7 @@ export const RoomScreen = () => {
     <View style={styles.container}>
       {/* Header Bar */}
       <View style={styles.topHeader}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <ArrowLeft size={20} color={Theme.colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerTitleGroup}>

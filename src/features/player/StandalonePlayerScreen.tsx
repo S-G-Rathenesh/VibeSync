@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, BackHandler } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
@@ -7,8 +7,9 @@ import { VibeYoutubePlayer } from '../../components/VibeYoutubePlayer';
 import { useFavoritesStore } from '../../store/useFavoritesStore';
 import { useHistoryStore } from '../../store/useHistoryStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { usePlayerStore } from '../../store/usePlayerStore';
 import { Theme } from '../../theme';
-import { Heart, Radio, ArrowLeft, Eye, ThumbsUp } from 'lucide-react-native';
+import { ArrowLeft, Eye, ThumbsUp, Heart, Radio } from 'lucide-react-native';
 
 export const StandalonePlayerScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'StandalonePlayer'>>();
@@ -30,11 +31,34 @@ export const StandalonePlayerScreen = () => {
   const { toggleFavorite, isFavorite } = useFavoritesStore();
   const addToHistory = useHistoryStore((state) => state.addToHistory);
 
+  const playVideo = usePlayerStore((state) => state.playVideo);
+  const minimize = usePlayerStore((state) => state.minimize);
+  const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const setPlaying = usePlayerStore((state) => state.setPlaying);
+
   useEffect(() => {
+    if (video?.id) {
+      playVideo(video);
+    }
     if (user && video?.id) {
       addToHistory(user.uid, video);
     }
-  }, [user, video]);
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      minimize();
+      navigation.goBack();
+      return true;
+    });
+
+    return () => {
+      backHandler.remove();
+    };
+  }, [video?.id]);
+
+  const handleBack = () => {
+    minimize();
+    navigation.goBack();
+  };
 
   const viewCountNum = isNaN(parseInt(video.viewCount || '0', 10))
     ? 0
@@ -48,7 +72,11 @@ export const StandalonePlayerScreen = () => {
     <View style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleBack}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
           <ArrowLeft size={20} color={Theme.colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -58,7 +86,15 @@ export const StandalonePlayerScreen = () => {
       </View>
 
       {/* YouTube Player */}
-      <VibeYoutubePlayer videoId={video.id || 'dQw4w9WgXcQ'} isPlaying={true} height={230} />
+      <VibeYoutubePlayer
+        videoId={video.id || 'dQw4w9WgXcQ'}
+        isPlaying={isPlaying}
+        onStateChange={(state) => {
+          if (state === 'playing') setPlaying(true);
+          if (state === 'paused') setPlaying(false);
+        }}
+        height={230}
+      />
 
       <ScrollView contentContainerStyle={styles.detailsContent} showsVerticalScrollIndicator={false}>
         {/* Video Info */}
